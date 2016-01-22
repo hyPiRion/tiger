@@ -56,37 +56,34 @@
   "Test if a Character is digit [0-9]"
   (re-matches #"\d" n))
 
-(defn expect-id-or-digit [s]
+(defn expect-id-or-digit [s linenum]
   (cond
-    (every? is-digit? (map str (apply vector s))) {:kind :TOKEN_NUM, :linenum 0, :lexem s}
-    :else {:kind :TOKEN_ID, :linenum 0, :lexem s}))
+    (every? is-digit? (map str (apply vector s))) {:kind :TOKEN_NUM, :linenum linenum, :lexem s}
+    :else {:kind :TOKEN_ID, :linenum linenum, :lexem s}))
 
-(defn expect-id-key [fstream terminal s]
+(defn expect-id-key [fstream terminal s linenum]
   "description"
   (cond
-    (= terminal -1) {:kind :TOKEN_EOF, :linenum 0, :lexem "none"}
+    (= terminal -1) {:kind :TOKEN_EOF, :linenum linenum, :lexem "none"}
     (some? (token-map s)) (do
                            (.reset fstream)
-                           {:kind (token-map s), :linenum 0, :lexem "none"})
-    (and (= s "") (some? (token-map (str (char terminal))))) {:kind (token-map (str (char terminal))), :linenum 0, :lexem "none"}
-    :else (expect-id-or-digit s)))
-
-(defn skip-space [fstream]
-  (loop [c (.read fstream)]
-    (if (or (= c 9)  ; \tab
-            (= c 10) ; \newline
-            (= c 13) ; \return
-            (= c 32)) ; \space)
-      (recur (do (.mark fstream 1) (.read fstream)))
-      c)))
+                           {:kind (token-map s), :linenum linenum, :lexem "none"})
+    (and (= s "") (some? (token-map (str (char terminal))))) {:kind (token-map (str (char terminal))), :linenum linenum, :lexem "none"}
+    :else (expect-id-or-digit s linenum)))
 
 (defn next-token-internal [fstream pos line]
-  (loop [c (skip-space fstream) s ""]
+  (loop [c (.read fstream) linenum line]
     (cond
-      (is-terminal? c) (expect-id-key fstream c s)
-      :else (recur (do (.mark fstream 1) (.read fstream)) 
-                   (str s (char c))))))
+      (or (= c 9)
+          (= c 13)
+          (= c 32)) (recur (do (.mark fstream 1) (.read fstream)) linenum)
+      (= c 10) (recur (do (.mark fstream 1) (.read fstream)) (inc linenum))
+      :else (loop [cc c s ""]
+              (cond
+                (is-terminal? cc) (expect-id-key fstream cc s linenum)
+                :else (recur (do (.mark fstream 1) (.read fstream))
+                             (str s (char cc))))))))
 
 (defn next-token [fstream pos line]
   (do (.mark fstream 1)
-    (next-token-internal fstream 0 0)))
+    (next-token-internal fstream 0 line)))
