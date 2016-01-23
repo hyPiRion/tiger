@@ -71,13 +71,44 @@
     (and (= s "") (some? (token-map (str (char terminal))))) {:kind (token-map (str (char terminal))), :linenum linenum, :lexem "none"}
     :else (expect-id-or-digit s linenum)))
 
+(defn skip-comm [fstream linenum]
+  (loop [c (.read fstream)]
+    (cond
+      (= (char c) \/) (letfn [(comm-eat [fstream linenum]
+                                (loop [c (.read fstream)]
+                                  (cond
+                                    (= c -1) {:next c, :linenum linenum}
+                                    (= \newline (char c)) {:next (.read fstream), :linenum (inc linenum)}
+                                    :else (recur (.read fstream)))))]
+                        (comm-eat fstream linenum))
+      (= (char c) \*) (letfn [(comm-exit [fstream]
+                                (loop [c (.read fstream)]
+                                  (cond
+                                    (= c -1) (print "Unclosed comment!")
+                                    (= \* (char c)) (recur (.read fstream))
+                                    (= \/ (char c)) :COMMENT_END
+                                    :else c)))
+                              (comm-eat [fstream line]
+                                (loop [c (.read fstream) linenum line]
+                                  (cond
+                                    (= :COMMENT_END c) {:next (.read fstream), :linenum linenum}
+                                    (= c -1) (print "Unclosed comment!")
+                                    (= \newline (char c)) (recur (.read fstream) (inc linenum))
+                                    (= \* (char c)) (recur (comm-exit fstream) linenum)
+                                    :else (recur (.read fstream) linenum))))]
+                        (comm-eat fstream linenum))
+      :else (print "ERROR"))))
+
 (defn next-token-internal [fstream pos line]
   (loop [c (.read fstream) linenum line]
     (cond
+      (= -1 c) {:kind :TOKEN_EOF, :linenum linenum, :lexem "none"}
       (or (= c 9)
           (= c 13)
           (= c 32)) (recur (do (.mark fstream 1) (.read fstream)) linenum)
       (= c 10) (recur (do (.mark fstream 1) (.read fstream)) (inc linenum))
+      (= \/ (char c)) (let [ret (skip-comm fstream linenum)]
+                        (recur (ret :next) (ret :linenum)))
       :else (loop [cc c s ""]
               (cond
                 (is-terminal? cc) (expect-id-key fstream cc s linenum)
