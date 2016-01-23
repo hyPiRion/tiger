@@ -10,9 +10,9 @@
                             FileInputStream.
                             InputStreamReader.
                             BufferedReader.)]
-       (loop [t (tiger.lexer/next-token reader 0 1 )]
+       (loop [t (tiger.lexer/next-token reader 1 )]
          (if (= (t :kind) :TOKEN_EOF)
            (println t)
            (do
              (println t)
-             (recur (lexer/next-token reader 0 (t :linenum)))))))))
+             (recur (lexer/next-token reader (t :linenum)))))))))
